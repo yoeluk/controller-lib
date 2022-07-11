@@ -33,7 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	appsinformers "k8s.io/client-go/informers/apps/v1"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -54,7 +54,7 @@ const (
 
 	// MessageResourceExists is the message used for Events when a resource
 	// fails to sync due to a Deployment already existing
-	MessageResourceExists = "Resource %q already exists and is not managed by Rdbs"
+	MessageResourceExists = "Resource %q already exists and is not managed by Rdsdb"
 	// MessageResourceSynced is the message used for an Event fired when a Foo
 	// is synced successfully
 	MessageResourceSynced = "Rdsdb synced successfully"
@@ -69,7 +69,7 @@ type Controller struct {
 
 	secretsLister corelisters.SecretLister
 	secretsSynced cache.InformerSynced
-	rdsbdsLister  listers.RdsdbLister
+	rdsdbssLister listers.RdsdbLister
 	rdsdbsSynced  cache.InformerSynced
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -86,9 +86,9 @@ type Controller struct {
 // NewController returns a new sample controller
 func NewController(
 	kubeclientset kubernetes.Interface,
-	sampleclientset clientset.Interface,
-	deploymentInformer appsinformers.DeploymentInformer,
-	fooInformer informers.RdsdbInformer) *Controller {
+	dbclientset clientset.Interface,
+	secretInformer coreinformers.SecretInformer,
+	rdbInformer informers.RdsdbInformer) *Controller {
 
 	// Create event broadcaster
 	// Add sample-controller types to the default Kubernetes Scheme so Events can be
@@ -101,19 +101,19 @@ func NewController(
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
 	controller := &Controller{
-		kubeclientset:     kubeclientset,
-		sampleclientset:   sampleclientset,
-		deploymentsLister: deploymentInformer.Lister(),
-		deploymentsSynced: deploymentInformer.Informer().HasSynced,
-		foosLister:        fooInformer.Lister(),
-		foosSynced:        fooInformer.Informer().HasSynced,
-		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Foos"),
-		recorder:          recorder,
+		kubeclientset: kubeclientset,
+		dbclientset:   dbclientset,
+		secretsLister: secretInformer.Lister(),
+		secretsSynced: secretInformer.Informer().HasSynced,
+		rdsdbssLister: rdbInformer.Lister(),
+		rdsdbsSynced:  rdbInformer.Informer().HasSynced,
+		workqueue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Rdsdbs"),
+		recorder:      recorder,
 	}
 
 	klog.Info("Setting up event handlers")
 	// Set up an event handler for when Foo resources change
-	fooInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	rdbInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueFoo,
 		UpdateFunc: func(old, new interface{}) {
 			controller.enqueueFoo(new)
@@ -125,17 +125,17 @@ func NewController(
 	// processing. This way, we don't need to implement custom logic for
 	// handling Deployment resources. More info on this pattern:
 	// https://github.com/kubernetes/community/blob/8cafef897a22026d42f5e5bb3f104febe7e29830/contributors/devel/controllers.md
-	deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	secretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.handleObject,
 		UpdateFunc: func(old, new interface{}) {
-			newDepl := new.(*appsv1.Deployment)
-			oldDepl := old.(*appsv1.Deployment)
+			newDepl := new.(*corev1.Secret)
+			oldDepl := old.(*corev1.Secret)
 			if newDepl.ResourceVersion == oldDepl.ResourceVersion {
 				// Periodic resync will send update events for all known Deployments.
 				// Two different versions of the same Deployment will always have different RVs.
 				return
 			}
-			controller.handleObject(new)
+			controller.handleObject(old)
 		},
 		DeleteFunc: controller.handleObject,
 	})
@@ -152,11 +152,11 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) error {
 	defer c.workqueue.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
-	klog.Info("Starting Foo controller")
+	klog.Info("Starting Rdsdb controller")
 
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.deploymentsSynced, c.foosSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.secretsSynced, c.rdsdbsSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
@@ -394,14 +394,14 @@ func newDeployment(rdb *dbv1alpha1.Rdsdb) *appsv1.Deployment {
 	}
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      foo.Spec.DeploymentName,
-			Namespace: foo.Namespace,
+			Name:      rdb.Spec.DeploymentName,
+			Namespace: rdb.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(foo, samplev1alpha1.SchemeGroupVersion.WithKind("Foo")),
+				*metav1.NewControllerRef(rdb, dbv1alpha1.SchemeGroupVersion.WithKind("Rdsdb")),
 			},
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: foo.Spec.Replicas,
+			Replicas: rdb.Spec.Replicas,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
