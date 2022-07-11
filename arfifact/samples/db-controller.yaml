@@ -1,0 +1,53 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: rdsdbs.dbcontroller.bcn.io
+spec:
+  group: dbcontroller.bcn.io
+  scope: Namespaced
+  names:
+    kind: Rdsdb
+    listKind: RdsdbList
+    plural: rdsdbs
+    singular: rdsdb
+    shortNames:
+      - rdb
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: false
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: 
+                - dbName
+                - dbUsername
+              properties:
+                dbName:
+                  type: string
+                  minimum: 2
+                dbUserName:
+                  type: string
+                  minimum: 3
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: 
+                - dbName
+                - dbUsername
+              properties:
+                dbName:
+                  type: string
+                  minimum: 2
+                dbUserName:
+                  type: string
+                  minimum: 3

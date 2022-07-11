@@ -35,7 +35,7 @@ type Rdsdb struct {
 // RdsdbSpec is the spec for a Rdsdb resource
 type RdsdbSpec struct {
 	DbName     string `json:"dbName"`
-	DbUserName *int32 `json:"dbUserName"`
+	DbUsername *int32 `json:"dbUsername"`
 }
 
 // RdsdbStatus is the status for a Rdsdb resource

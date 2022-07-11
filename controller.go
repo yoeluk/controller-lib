@@ -37,13 +37,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	appslisters "k8s.io/client-go/listers/apps/v1"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 )
 
-const controllerAgentName = "sample-controller"
+const controllerAgentName = "dbcontroller"
 
 const (
 	// SuccessSynced is used as part of the Event 'reason' when a Foo is synced
@@ -54,10 +54,10 @@ const (
 
 	// MessageResourceExists is the message used for Events when a resource
 	// fails to sync due to a Deployment already existing
-	MessageResourceExists = "Resource %q already exists and is not managed by Foo"
+	MessageResourceExists = "Resource %q already exists and is not managed by Rdbs"
 	// MessageResourceSynced is the message used for an Event fired when a Foo
 	// is synced successfully
-	MessageResourceSynced = "Foo synced successfully"
+	MessageResourceSynced = "Rdsdb synced successfully"
 )
 
 // Controller is the controller implementation for Foo resources
@@ -65,12 +65,12 @@ type Controller struct {
 	// kubeclientset is a standard kubernetes clientset
 	kubeclientset kubernetes.Interface
 	// sampleclientset is a clientset for our own API group
-	sampleclientset clientset.Interface
+	dbclientset clientset.Interface
 
-	deploymentsLister appslisters.DeploymentLister
-	deploymentsSynced cache.InformerSynced
-	foosLister        listers.RdsdbLister
-	foosSynced        cache.InformerSynced
+	secretsLister corelisters.SecretLister
+	secretsSynced cache.InformerSynced
+	rdsbdsLister  listers.RdsdbLister
+	rdsdbsSynced  cache.InformerSynced
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This

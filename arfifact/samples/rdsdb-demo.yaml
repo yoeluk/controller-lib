@@ -1,0 +1,7 @@
+apiVersion: "dbcontroller.bcn.io/v1"
+kind: Rdsdb
+metadata:
+  name: demo-rdsdb
+spec:
+  dbName: db
+  dbUsername: app
