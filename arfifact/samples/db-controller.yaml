@@ -15,25 +15,6 @@ spec:
   versions:
     - name: v1alpha1
       served: true
-      storage: false
-      schema:
-        openAPIV3Schema:
-          type: object
-          properties:
-            spec:
-              type: object
-              required: 
-                - dbName
-                - dbUsername
-              properties:
-                dbName:
-                  type: string
-                  minimum: 2
-                dbUserName:
-                  type: string
-                  minimum: 3
-    - name: v1
-      served: true
       storage: true
       schema:
         openAPIV3Schema:
@@ -41,7 +22,7 @@ spec:
           properties:
             spec:
               type: object
-              required: 
+              required:
                 - dbName
                 - dbUsername
               properties:
