@@ -117,7 +117,7 @@ func (c *FakeRdsdbs) UpdateStatus(ctx context.Context, rdsdb *v1alpha1.Rdsdb, op
 // Delete takes name of the rdsdb and deletes it. Returns an error if one occurs.
 func (c *FakeRdsdbs) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(rdsdbsResource, c.ns, name, opts), &v1alpha1.Rdsdb{})
+		Invokes(testing.NewDeleteAction(rdsdbsResource, c.ns, name), &v1alpha1.Rdsdb{})
 
 	return err
 }
