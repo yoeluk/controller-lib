@@ -29,6 +29,6 @@ spec:
                 dbName:
                   type: string
                   minimum: 2
-                dbUserName:
+                dbUsername:
                   type: string
                   minimum: 3

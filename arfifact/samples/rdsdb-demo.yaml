@@ -1,4 +1,4 @@
-apiVersion: "dbcontroller.bcn.io/v1alpha1"
+apiVersion: dbcontroller.bcn.io/v1alpha1
 kind: Rdsdb
 metadata:
   name: demo-rdsdb

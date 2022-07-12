@@ -114,9 +114,9 @@ func NewController(
 	klog.Info("Setting up event handlers")
 	// Set up an event handler for when Foo resources change
 	rdbInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.enqueueFoo,
+		AddFunc: controller.enqueueRdsdb,
 		UpdateFunc: func(old, new interface{}) {
-			controller.enqueueFoo(new)
+			controller.enqueueRdsdb(new)
 		},
 	})
 	// Set up an event handler for when Deployment resources change. This
@@ -370,7 +370,7 @@ func (c *Controller) syncHandler(key string) error {
 // enqueueFoo takes a Foo resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be
 // passed resources of any type other than Foo.
-func (c *Controller) enqueueFoo(obj interface{}) {
+func (c *Controller) enqueueRdsdb(obj interface{}) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -405,17 +405,17 @@ func (c *Controller) handleObject(obj interface{}) {
 	if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
 		// If this object is not owned by a Foo, we should not do anything more
 		// with it.
-		if ownerRef.Kind != "Foo" {
+		if ownerRef.Kind != "Rdsdb" {
 			return
 		}
 
-		foo, err := c.rdsdbsLister.Rdsdbs(object.GetNamespace()).Get(ownerRef.Name)
+		rdb, err := c.rdsdbsLister.Rdsdbs(object.GetNamespace()).Get(ownerRef.Name)
 		if err != nil {
-			klog.V(4).Infof("ignoring orphaned object '%s/%s' of foo '%s'", object.GetNamespace(), object.GetName(), ownerRef.Name)
+			klog.V(4).Infof("ignoring orphaned object '%s/%s' of rdb '%s'", object.GetNamespace(), object.GetName(), ownerRef.Name)
 			return
 		}
 
-		c.enqueueFoo(foo)
+		c.enqueueRdsdb(rdb)
 		return
 	}
 }
