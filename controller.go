@@ -17,17 +17,17 @@ limitations under the License.
 package main
 
 import (
-	"context"
+	//"context"
 	"fmt"
 	"k8s.io/klog/v2"
 	"time"
 
-	dbv1alpha1 "github.com/yoeluk/controller-lib/pkg/apis/dbcontroller/v1alpha1"
+	//dbv1alpha1 "github.com/yoeluk/controller-lib/pkg/apis/dbcontroller/v1alpha1"
 	clientset "github.com/yoeluk/controller-lib/pkg/generated/clientset/versioned"
 	dbscheme "github.com/yoeluk/controller-lib/pkg/generated/clientset/versioned/scheme"
 	informers "github.com/yoeluk/controller-lib/pkg/generated/informers/externalversions/dbcontroller/v1alpha1"
 	listers "github.com/yoeluk/controller-lib/pkg/generated/listers/dbcontroller/v1alpha1"
-	appsv1 "k8s.io/api/apps/v1"
+	//appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -69,7 +69,7 @@ type Controller struct {
 
 	secretsLister corelisters.SecretLister
 	secretsSynced cache.InformerSynced
-	rdsdbssLister listers.RdsdbLister
+	rdsdbsLister  listers.RdsdbLister
 	rdsdbsSynced  cache.InformerSynced
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -105,7 +105,7 @@ func NewController(
 		dbclientset:   dbclientset,
 		secretsLister: secretInformer.Lister(),
 		secretsSynced: secretInformer.Informer().HasSynced,
-		rdsdbssLister: rdbInformer.Lister(),
+		rdsdbsLister:  rdbInformer.Lister(),
 		rdsdbsSynced:  rdbInformer.Informer().HasSynced,
 		workqueue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Rdsdbs"),
 		recorder:      recorder,
@@ -236,6 +236,37 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
+//func (c *Controller) getRdsRootCreds() error {
+//	rdsAdminSecret, _ := c.secretsLister.Secrets("management").Get("rds-root-auth")
+//
+//	var (
+//		rdsEndpoint      string
+//		rdsAdminUsername string
+//		rdsRootPassword  string
+//	)
+//
+//	for k, v := range rdsAdminSecret.StringData {
+//		if k == "url" {
+//			rdsEndpoint = v
+//		}
+//		if k == "username" {
+//			rdsAdminUsername = v
+//		}
+//		if k == "password" {
+//			rdsRootPassword = v
+//		}
+//	}
+//
+//	if rdsEndpoint != "" || rdsAdminUsername != "" || rdsRootPassword != "" {
+//		return fmt.Errorf("couldn't find the rds authentication data: rdsEndpoint = %v, rdsAdminUsername = %v, len(rdsRootPassword) = %d", rdsEndpoint, rdsAdminUsername, len(rdsRootPassword))
+//	}
+//
+//	authToken, err := rds.RDS{}.B(rdsEndpoint, awsRegion, dbUser, awsCreds)
+//	sql.Open("postgresql", "no")
+//
+//	return nil
+//}
+
 // syncHandler compares the actual state with the desired, and attempts to
 // converge the two. It then updates the Status block of the Foo resource
 // with the current status of the resource.
@@ -247,8 +278,13 @@ func (c *Controller) syncHandler(key string) error {
 		return nil
 	}
 
+	fmt.Printf("namespace %s, name %s", namespace, name)
+
 	// Get the Foo resource with this namespace/name
-	rdb, err := c.foosLister.Rdsdbs(namespace).Get(name)
+	//rdb, err := c.rdsdbsLister.Rdsdbs(namespace).Get(name)
+
+	// do the thing
+
 	if err != nil {
 		// The Foo resource may no longer exist, in which case we stop
 		// processing.
@@ -260,76 +296,76 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
-	deploymentName := rdb.Spec.DeploymentName
-	if deploymentName == "" {
-		// We choose to absorb the error here as the worker would requeue the
-		// resource otherwise. Instead, the next time the resource is updated
-		// the resource will be queued again.
-		utilruntime.HandleError(fmt.Errorf("%s: deployment name must be specified", key))
-		return nil
-	}
-
-	// Get the deployment with the name specified in Foo.spec
-	deployment, err := c.deploymentsLister.Deployments(rdb.Namespace).Get(deploymentName)
-	// If the resource doesn't exist, we'll create it
-	if errors.IsNotFound(err) {
-		deployment, err = c.kubeclientset.AppsV1().Deployments(foo.Namespace).Create(context.TODO(), newDeployment(foo), metav1.CreateOptions{})
-	}
-
-	// If an error occurs during Get/Create, we'll requeue the item so we can
-	// attempt processing again later. This could have been caused by a
-	// temporary network failure, or any other transient reason.
-	if err != nil {
-		return err
-	}
-
-	// If the Deployment is not controlled by this Foo resource, we should log
-	// a warning to the event recorder and return error msg.
-	if !metav1.IsControlledBy(deployment, foo) {
-		msg := fmt.Sprintf(MessageResourceExists, deployment.Name)
-		c.recorder.Event(foo, corev1.EventTypeWarning, ErrResourceExists, msg)
-		return fmt.Errorf("%s", msg)
-	}
-
-	// If this number of the replicas on the Foo resource is specified, and the
-	// number does not equal the current desired replicas on the Deployment, we
-	// should update the Deployment resource.
-	if foo.Spec.Replicas != nil && *foo.Spec.Replicas != *deployment.Spec.Replicas {
-		klog.V(4).Infof("Foo %s replicas: %d, deployment replicas: %d", name, *foo.Spec.Replicas, *deployment.Spec.Replicas)
-		deployment, err = c.kubeclientset.AppsV1().Deployments(foo.Namespace).Update(context.TODO(), newDeployment(foo), metav1.UpdateOptions{})
-	}
-
-	// If an error occurs during Update, we'll requeue the item so we can
-	// attempt processing again later. This could have been caused by a
-	// temporary network failure, or any other transient reason.
-	if err != nil {
-		return err
-	}
-
-	// Finally, we update the status block of the Foo resource to reflect the
-	// current state of the world
-	err = c.updateFooStatus(foo, deployment)
-	if err != nil {
-		return err
-	}
-
-	c.recorder.Event(foo, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
+	//deploymentName := rdb.Spec.DeploymentName
+	//if deploymentName == "" {
+	//	// We choose to absorb the error here as the worker would requeue the
+	//	// resource otherwise. Instead, the next time the resource is updated
+	//	// the resource will be queued again.
+	//	utilruntime.HandleError(fmt.Errorf("%s: deployment name must be specified", key))
+	//	return nil
+	//}
+	//
+	//// Get the deployment with the name specified in Foo.spec
+	//deployment, err := c.deploymentsLister.Deployments(rdb.Namespace).Get(deploymentName)
+	//// If the resource doesn't exist, we'll create it
+	//if errors.IsNotFound(err) {
+	//	deployment, err = c.kubeclientset.AppsV1().Deployments(foo.Namespace).Create(context.TODO(), newDeployment(foo), metav1.CreateOptions{})
+	//}
+	//
+	//// If an error occurs during Get/Create, we'll requeue the item so we can
+	//// attempt processing again later. This could have been caused by a
+	//// temporary network failure, or any other transient reason.
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//// If the Deployment is not controlled by this Foo resource, we should log
+	//// a warning to the event recorder and return error msg.
+	//if !metav1.IsControlledBy(deployment, foo) {
+	//	msg := fmt.Sprintf(MessageResourceExists, deployment.Name)
+	//	c.recorder.Event(foo, corev1.EventTypeWarning, ErrResourceExists, msg)
+	//	return fmt.Errorf("%s", msg)
+	//}
+	//
+	//// If this number of the replicas on the Foo resource is specified, and the
+	//// number does not equal the current desired replicas on the Deployment, we
+	//// should update the Deployment resource.
+	//if foo.Spec.Replicas != nil && *foo.Spec.Replicas != *deployment.Spec.Replicas {
+	//	klog.V(4).Infof("Foo %s replicas: %d, deployment replicas: %d", name, *foo.Spec.Replicas, *deployment.Spec.Replicas)
+	//	deployment, err = c.kubeclientset.AppsV1().Deployments(foo.Namespace).Update(context.TODO(), newDeployment(foo), metav1.UpdateOptions{})
+	//}
+	//
+	//// If an error occurs during Update, we'll requeue the item so we can
+	//// attempt processing again later. This could have been caused by a
+	//// temporary network failure, or any other transient reason.
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//// Finally, we update the status block of the Foo resource to reflect the
+	//// current state of the world
+	//err = c.updateFooStatus(foo, deployment)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//c.recorder.Event(foo, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 	return nil
 }
 
-func (c *Controller) updateFooStatus(rdb *dbv1alpha1.Rdsdb, deployment *appsv1.Deployment) error {
-	// NEVER modify objects from the store. It's a read-only, local cache.
-	// You can use DeepCopy() to make a deep copy of original object and modify this copy
-	// Or create a copy manually for better performance
-	rdbCopy := rdb.DeepCopy()
-	fooCopy.Status.DbCreated = deployment.Status.AvailableReplicas
-	// If the CustomResourceSubresources feature gate is not enabled,
-	// we must use Update instead of UpdateStatus to update the Status block of the Foo resource.
-	// UpdateStatus will not allow changes to the Spec of the resource,
-	// which is ideal for ensuring nothing other than resource status has been updated.
-	_, err := c.sampleclientset.SamplecontrollerV1alpha1().Foos(foo.Namespace).UpdateStatus(context.TODO(), fooCopy, metav1.UpdateOptions{})
-	return err
-}
+//func (c *Controller) updateFooStatus(rdb *dbv1alpha1.Rdsdb, deployment *appsv1.Deployment) error {
+//	// NEVER modify objects from the store. It's a read-only, local cache.
+//	// You can use DeepCopy() to make a deep copy of original object and modify this copy
+//	// Or create a copy manually for better performance
+//	rdbCopy := rdb.DeepCopy()
+//	fooCopy.Status.DbCreated = deployment.Status.AvailableReplicas
+//	// If the CustomResourceSubresources feature gate is not enabled,
+//	// we must use Update instead of UpdateStatus to update the Status block of the Foo resource.
+//	// UpdateStatus will not allow changes to the Spec of the resource,
+//	// which is ideal for ensuring nothing other than resource status has been updated.
+//	_, err := c.sampleclientset.SamplecontrollerV1alpha1().Foos(foo.Namespace).UpdateStatus(context.TODO(), fooCopy, metav1.UpdateOptions{})
+//	return err
+//}
 
 // enqueueFoo takes a Foo resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be
@@ -373,7 +409,7 @@ func (c *Controller) handleObject(obj interface{}) {
 			return
 		}
 
-		foo, err := c.foosLister.Rdsdbs(object.GetNamespace()).Get(ownerRef.Name)
+		foo, err := c.rdsdbsLister.Rdsdbs(object.GetNamespace()).Get(ownerRef.Name)
 		if err != nil {
 			klog.V(4).Infof("ignoring orphaned object '%s/%s' of foo '%s'", object.GetNamespace(), object.GetName(), ownerRef.Name)
 			return
@@ -387,37 +423,37 @@ func (c *Controller) handleObject(obj interface{}) {
 // newDeployment creates a new Deployment for a Foo resource. It also sets
 // the appropriate OwnerReferences on the resource so handleObject can discover
 // the Foo resource that 'owns' it.
-func newDeployment(rdb *dbv1alpha1.Rdsdb) *appsv1.Deployment {
-	labels := map[string]string{
-		"app":        "nginx",
-		"controller": rdb.Name,
-	}
-	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      rdb.Spec.DeploymentName,
-			Namespace: rdb.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(rdb, dbv1alpha1.SchemeGroupVersion.WithKind("Rdsdb")),
-			},
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: rdb.Spec.Replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: labels,
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  "nginx",
-							Image: "nginx:latest",
-						},
-					},
-				},
-			},
-		},
-	}
-}
+//func newDeployment(rdb *dbv1alpha1.Rdsdb) *appsv1.Deployment {
+//	labels := map[string]string{
+//		"app":        "nginx",
+//		"controller": rdb.Name,
+//	}
+//	return &appsv1.Deployment{
+//		ObjectMeta: metav1.ObjectMeta{
+//			Name:      rdb.Spec.DeploymentName,
+//			Namespace: rdb.Namespace,
+//			OwnerReferences: []metav1.OwnerReference{
+//				*metav1.NewControllerRef(rdb, dbv1alpha1.SchemeGroupVersion.WithKind("Rdsdb")),
+//			},
+//		},
+//		Spec: appsv1.DeploymentSpec{
+//			Replicas: rdb.Spec.Replicas,
+//			Selector: &metav1.LabelSelector{
+//				MatchLabels: labels,
+//			},
+//			Template: corev1.PodTemplateSpec{
+//				ObjectMeta: metav1.ObjectMeta{
+//					Labels: labels,
+//				},
+//				Spec: corev1.PodSpec{
+//					Containers: []corev1.Container{
+//						{
+//							Name:  "nginx",
+//							Image: "nginx:latest",
+//						},
+//					},
+//				},
+//			},
+//		},
+//	}
+//}
